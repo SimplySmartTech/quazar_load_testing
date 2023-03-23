@@ -10,6 +10,7 @@ import (
 	"simply_smart_mqtt_load_testing/pkg/loadtest"
 	"simply_smart_mqtt_load_testing/pkg/mqtt"
 	"simply_smart_mqtt_load_testing/pkg/routes"
+	"simply_smart_mqtt_load_testing/restapiservice"
 
 	paho_mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gorilla/mux"
@@ -47,7 +48,8 @@ func main() {
 	// Initialize dependencies
 	db := database.NewDatabase()
 	mClient := mqtt.GetMqttClient()
-	lt := loadtest.GetLoadTesting(db, mClient)
+	restApi := restapiservice.NreRestService()
+	lt := loadtest.GetLoadTesting(db, mClient, restApi)
 	deps := dependencies.Dependency{
 		Lt: lt,
 	}
