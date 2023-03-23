@@ -9,6 +9,7 @@ import (
 	"os"
 	"simply_smart_mqtt_load_testing/pkg/database"
 	"simply_smart_mqtt_load_testing/pkg/model"
+	"simply_smart_mqtt_load_testing/restapiservice"
 	"time"
 
 	mqttt "simply_smart_mqtt_load_testing/pkg/mqtt"
@@ -20,10 +21,11 @@ type LoadTesting interface {
 	FetchThingies(ctx context.Context, limit int32, sql string) (model.Thingies, error)
 	GeneratePayload(ctx context.Context, loadParameter model.InitializeLoadTestRequest, client mqtt.Client)
 	DocLogger(ctx context.Context, sendPayload string)
-	InitializeGoRoutine(ctx context.Context, client mqtt.Client, thingKeys model.Thingies, gid int32) (results Result)
-	worker(ctx context.Context, id int32, thingKeys model.Thingies, client mqtt.Client, result chan<- Result)
+	InitializeGoRoutine(ctx context.Context, client mqtt.Client, thingKeys model.Thingies, gid int32) (results WorkerResult)
+	worker(ctx context.Context, id int32, thingKeys model.Thingies, client mqtt.Client, result chan<- WorkerResult)
 	CountTemplateThingKeysData(ctx context.Context) (int, error)
 	RemoveThingsData(ctx context.Context) (int, error)
+	CreateThingKey(ctx context.Context, token string, count int) error
 }
 
 type loadTesting struct {
@@ -31,15 +33,17 @@ type loadTesting struct {
 	mClient        mqttt.MqttClient
 	msgCounter     int32
 	gatewayCounter int32
+	RESTService    restapiservice.Service
 }
 
 // Create an instance of load testing
-func GetLoadTesting(db database.DatabaseOps, mClient mqttt.MqttClient) LoadTesting {
+func GetLoadTesting(db database.DatabaseOps, mClient mqttt.MqttClient, resp restapiservice.Service) LoadTesting {
 	return &loadTesting{
 		db:             db,
 		mClient:        mClient,
 		msgCounter:     0,
 		gatewayCounter: 0,
+		RESTService:    resp,
 	}
 }
 
@@ -64,40 +68,64 @@ func (lt *loadTesting) InitializeGateways(ctx context.Context, loadParameter mod
 
 	// this is error here
 	fmt.Println(loadParameter.TotalGateway, "***********gatway")
-	reCh := make(chan Result)
+	reCh := make(chan WorkerResult)
 	// for start := time.Now(); time.Since(start) < (time.Second * time.Duration(maxrunningtime)); {
-	l := 0
 
-	results := []Result{}
+	results := make([]*Result, loadParameter.TotalGateway+1)
 	// temp_eZc3fHCCEg
 	// temp_2xColxZtG1
-
-	for ; i < int32(loadParameter.TotalGateway); i++ {
-		lt.gatewayCounter++
-
-		fmt.Printf("\nl := %v\n", l)
-		sql := fmt.Sprintf("select id, name,template,thing_key,extract(epoch from last_activity) as last_activity,site_id,user_defined_property,templates_id from things order by id limit %v offset %v", loadParameter.MeterparGateway, l)
-		thingies, err := lt.db.FetchThingies(ctx, int32(loadParameter.MeterparGateway), sql)
-		if err != nil {
-			fmt.Println(err.Error())
-			continue
+	for j := 0; j <= loadParameter.TotalGateway; j++ {
+		results[j] = &Result{
+			Gateway: int32(j),
+			Limit:   loadParameter.MeterparGateway,
+			Offset:  j * loadParameter.MeterparGateway,
 		}
 
-		go lt.worker(ctx, i, thingies, client, reCh)
-		fmt.Println("low value ", l)
-		l = int(thingies[len(thingies)-1].Id)
+	}
+	fmt.Printf("%+v", results)
+	counter := 0
+	for start := time.Now().Unix(); start+int64(loadParameter.RunningTime*60)-1 > time.Now().Unix(); {
+		// fmt.Println("time ", start, " ", (start + int64(loadParameter.RunningTime*60)), " ", start+int64(loadParameter.RunningTime*60) >= time.Now().Unix())
+		for i = 0; i < int32(loadParameter.TotalGateway); i++ {
+			sql := fmt.Sprintf("select id, name,template,thing_key,extract(epoch from last_activity) as last_activity,site_id,user_defined_property,templates_id from things order by id limit %v offset %v", loadParameter.MeterparGateway, results[i].Offset)
+			thingies, err := lt.db.FetchThingies(ctx, int32(loadParameter.MeterparGateway), sql)
+			if err != nil {
+				fmt.Println(err.Error())
+				continue
+			}
+			// fmt.Println((results[i].StartActivity + loadParameter.Interval*60), " ", int(time.Now().Unix()), " ", (results[i].StartActivity+loadParameter.Interval*60 <= int(time.Now().Unix())))
+			if (results[i].StartActivity + loadParameter.Interval*60) <= int(time.Now().Unix()) {
+				results[i].StartActivity = int(time.Now().Unix())
+				counter++
+				go lt.worker(ctx, i, thingies, client, reCh)
+			}
+
+		}
+
+		// time.Sleep(time.Second * time.Duration(interva
 
 	}
-
-	// time.Sleep(time.Second * time.Duration(interva
-	for i = 0; i < int32(loadParameter.TotalGateway); i++ {
-		results = append(results, <-reCh)
+	fmt.Println(counter, " counter")
+	for i = 0; i < int32(counter); i++ {
+		result := <-reCh
+		fmt.Println("result in channel loop: ", result)
+		results[result.Gateway].SetInterval(Interval{
+			Start:        result.Start,
+			LastActivity: result.LastActivity,
+			Total:        result.Total,
+			Success:      result.Success,
+			Fail:         result.Fail,
+		})
+		results[result.Gateway].IncrementTotalCycle()
+		// results[result.Gateway].SetLastActivity(result.Start)
+	}
+	for _, res := range results {
+		fmt.Printf("final outer result: %+v \n", res)
 	}
 
-	// }
 }
 
-func (lt *loadTesting) worker(ctx context.Context, id int32, thingKeys model.Thingies, client mqtt.Client, result chan<- Result) {
+func (lt *loadTesting) worker(ctx context.Context, id int32, thingKeys model.Thingies, client mqtt.Client, result chan<- WorkerResult) {
 	res := lt.InitializeGoRoutine(ctx, client, thingKeys, id)
 	result <- res
 }
@@ -121,12 +149,13 @@ func (lt *loadTesting) DocLogger(ctx context.Context, sendPayload string) {
 }
 
 // Initialize This Goroutine
-func (lt *loadTesting) InitializeGoRoutine(ctx context.Context, client mqtt.Client, thingKeys model.Thingies, gid int32) (results Result) {
+func (lt *loadTesting) InitializeGoRoutine(ctx context.Context, client mqtt.Client, thingKeys model.Thingies, gid int32) (results WorkerResult) {
 	// log.Println("Gateway Started:", gid)
 	fmt.Println(len(thingKeys), "things *********** ", gid)
-	result := Result{}
+	result := WorkerResult{}
 	result.Total = len(thingKeys)
 	result.Gateway = gid
+	result.Start = int(time.Now().Unix())
 	for _, v := range thingKeys {
 		var pulseL_val int32 = int32(rand.Intn(3200-1) + 1)
 		var pulseH_val int32 = int32(rand.Intn(3200-1) + 1)
@@ -165,8 +194,8 @@ func (lt *loadTesting) InitializeGoRoutine(ctx context.Context, client mqtt.Clie
 		token.Wait()
 		result.Success++
 		lt.DocLogger(ctx, "SUCCESS***"+string(res))
-		lt.msgCounter++
 	}
+	result.LastActivity = int(time.Now().Unix())
 	return result
 }
 
@@ -206,5 +235,6 @@ func (lt *loadTesting) RemoveThingsData(ctx context.Context) (int, error) {
 	return count, err
 }
 
-// temp_eZc3fHCCEg
-// temp_2xColxZtG1
+func (lt *loadTesting) CreateThingKey(ctx context.Context, token string, count int) error {
+	return lt.RESTService.GenerateThingKeys(count, token)
+}

@@ -2,6 +2,7 @@ package loadtest
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"simply_smart_mqtt_load_testing/pkg/api"
@@ -53,5 +54,28 @@ func RemoveThingsDataFromTemplate(service LoadTesting) http.HandlerFunc {
 			return
 		}
 		api.RespondWithJSON(w, http.StatusOK, api.Response{Data: data, Message: "successfully fetch"})
+	}
+}
+
+func CreateThingKeys(service LoadTesting) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		body := struct {
+			Token string `json:"token"`
+			Count int    `json:"count"`
+		}{}
+		err := json.NewDecoder(r.Body).Decode(&body)
+		if err != nil {
+			fmt.Println("Error decoding", err.Error())
+			api.RespondWithJSON(w, http.StatusBadRequest, api.Response{Error: err.Error()})
+			return
+		}
+		fmt.Println("count", body.Count)
+		err = service.CreateThingKey(ctx, body.Token, body.Count)
+		if err != nil {
+			api.RespondWithJSON(w, http.StatusInternalServerError, api.Response{Error: err.Error()})
+			return
+		}
+		api.RespondWithJSON(w, http.StatusOK, api.Response{Message: "successfully created"})
 	}
 }

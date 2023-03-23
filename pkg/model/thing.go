@@ -33,7 +33,7 @@ type PublishRequestPayload struct {
 	Data      PublishRequestPayloadData `json:"data"`
 	ThingKey  string                    `json:"thing_key"`
 	AccessKey string                    `json:"access_key"`
-	Timestamp int32                     `json:"timestamp"`
+	Timestamp int32                     `json:"time_stamp"`
 }
 
 // Payload data for sending to server
