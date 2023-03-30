@@ -1,5 +1,7 @@
 package loadtest
 
+import "simply_smart_mqtt_load_testing/pkg/model"
+
 type Result struct {
 	Gateway       int32      `json:"gateway"`
 	Interval      []Interval `json:"interval"`
@@ -51,4 +53,9 @@ type Interval struct {
 	Total        int `json:"total"`
 	Fail         int `json:"fail"`
 	Success      int `json:"success"`
+}
+
+type JobPush struct {
+	Gateway   int
+	thingKeys model.Thingies
 }

@@ -24,6 +24,7 @@ func InitMqttClient() {
 	opts.SetClientID("go_mqtt_client")
 	opts.SetUsername(os.Getenv("MQTT_USER"))
 	opts.SetPassword(os.Getenv("MQTT_PASS"))
+	opts.SetAutoReconnect(true)
 	opts.SetDefaultPublishHandler(messagePubHandler)
 	opts.OnConnect = connectHandler
 	opts.OnConnectionLost = connectLostHandler

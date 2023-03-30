@@ -22,23 +22,24 @@ func init() {
 	config.LoadEnvironment()
 	database.InitDatabase()
 
-	var broker = "127.0.0.1"
-	var port = 1883
+	// var broker = "127.0.0.1"
+	// var port = 1883
 
-	opts := paho_mqtt.NewClientOptions()
-	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", broker, port))
-	opts.SetClientID("go_mqtt_client")
-	opts.SetUsername("78d9fa4teebt5add59ctb86e1a286477cb147392")
-	opts.SetPassword("78d9fa4teebt5add59ctb86e1a286477cb147391")
-	opts.KeepAlive = 100
-	opts.SetDefaultPublishHandler(messagePubHandler)
-	opts.OnConnect = connectHandler
-	opts.OnConnectionLost = connectLostHandler
-	client = paho_mqtt.NewClient(opts)
-	token := client.Connect()
-	if token.Wait() && token.Error() != nil {
-		panic(token.Error())
-	}
+	// opts := paho_mqtt.NewClientOptions()
+	// opts.AddBroker(fmt.Sprintf("tcp://%s:%d", broker, port))
+	// opts.SetClientID("go_mqtt_client")
+	// opts.SetUsername("78d9fa4teebt5add59ctb86e1a286477cb147392")
+	// opts.SetPassword("78d9fa4teebt5add59ctb86e1a286477cb147391")
+	// // opts.KeepAlive = 100000
+	// opts.SetDefaultPublishHandler(MessagePubHandler)
+	// opts.SetAutoReconnect(true)
+	// opts.OnConnect = ConnectHandler
+	// opts.OnConnectionLost = ConnectLostHandler
+	// client = paho_mqtt.NewClient(opts)
+	// token := client.Connect()
+	// if token.Wait() && token.Error() != nil {
+	// 	panic(token.Error())
+	// }
 	// mqtt.InitMqttClient()
 }
 
@@ -63,14 +64,14 @@ func main() {
 	}
 }
 
-var messagePubHandler paho_mqtt.MessageHandler = func(client paho_mqtt.Client, msg paho_mqtt.Message) {
+var MessagePubHandler paho_mqtt.MessageHandler = func(client paho_mqtt.Client, msg paho_mqtt.Message) {
 	fmt.Printf("Topic: %s | %s\n", msg.Topic(), msg.Payload())
 }
 
-var connectHandler paho_mqtt.OnConnectHandler = func(client paho_mqtt.Client) {
+var ConnectHandler paho_mqtt.OnConnectHandler = func(client paho_mqtt.Client) {
 	fmt.Println("Connected")
 }
 
-var connectLostHandler paho_mqtt.ConnectionLostHandler = func(client paho_mqtt.Client, err error) {
+var ConnectLostHandler paho_mqtt.ConnectionLostHandler = func(client paho_mqtt.Client, err error) {
 	fmt.Printf("Connect lost: %+v", err)
 }

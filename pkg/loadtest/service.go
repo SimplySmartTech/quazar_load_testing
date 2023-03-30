@@ -22,7 +22,7 @@ type LoadTesting interface {
 	GeneratePayload(ctx context.Context, loadParameter model.InitializeLoadTestRequest, client mqtt.Client)
 	DocLogger(ctx context.Context, sendPayload string)
 	InitializeGoRoutine(ctx context.Context, client mqtt.Client, thingKeys model.Thingies, gid int32) (results WorkerResult)
-	worker(ctx context.Context, id int32, thingKeys model.Thingies, client mqtt.Client, result chan<- WorkerResult)
+	worker(ctx context.Context, jobs <-chan JobPush, client mqtt.Client, results []*Result)
 	CountTemplateThingKeysData(ctx context.Context) (int, error)
 	RemoveThingsData(ctx context.Context) (int, error)
 	CreateThingKey(ctx context.Context, token string, count int) error
@@ -54,8 +54,6 @@ func (lt *loadTesting) FetchThingies(ctx context.Context, limit int32, sql strin
 
 // Generate payload data for thingies
 func (lt *loadTesting) GeneratePayload(ctx context.Context, loadParameter model.InitializeLoadTestRequest, client mqtt.Client) {
-	total_gateways := lt.db.TotalGateway(ctx, int32(loadParameter.MeterparGateway))
-	log.Println("total_gateways", total_gateways)
 
 	lt.InitializeGateways(ctx, loadParameter, client)
 
@@ -66,10 +64,8 @@ func (lt *loadTesting) InitializeGateways(ctx context.Context, loadParameter mod
 
 	var i int32 = 0
 
-	// this is error here
 	fmt.Println(loadParameter.TotalGateway, "***********gatway")
-	reCh := make(chan WorkerResult)
-	// for start := time.Now(); time.Since(start) < (time.Second * time.Duration(maxrunningtime)); {
+	job := make(chan JobPush, loadParameter.TotalGateway)
 
 	results := make([]*Result, loadParameter.TotalGateway+1)
 	// temp_eZc3fHCCEg
@@ -78,56 +74,86 @@ func (lt *loadTesting) InitializeGateways(ctx context.Context, loadParameter mod
 		results[j] = &Result{
 			Gateway: int32(j),
 			Limit:   loadParameter.MeterparGateway,
-			Offset:  j * loadParameter.MeterparGateway,
+			Offset:  j*loadParameter.MeterparGateway + 12000,
 		}
 
 	}
+	var broker = "52.66.50.56"
+	var port = 1883
+	clientObj := []mqtt.Client{}
+	for j := 0; j < loadParameter.TotalGateway; j++ {
+		opts := mqtt.NewClientOptions()
+		opts.AddBroker(fmt.Sprintf("tcp://%s:%d", broker, port))
+		opts.SetClientID("go_mqtt_client")
+		opts.SetUsername("78d9fa4teebt5add59ctb86e1a286477cb147392")
+		opts.SetPassword("78d9fa4teebt5add59ctb86e1a286477cb147391")
+		opts.KeepAlive = 10000
+		opts.SetDefaultPublishHandler(MessagePubHandler)
+		opts.OnConnect = ConnectHandler
+		opts.OnConnectionLost = ConnectLostHandler
+		client1 := mqtt.NewClient(opts)
+		clientObj = append(clientObj, client)
+		token := client1.Connect()
+		if token.Wait() && token.Error() != nil {
+			panic(token.Error())
+		}
+		go lt.worker(ctx, job, client1, results)
+	}
+
 	fmt.Printf("%+v", results)
 	counter := 0
+	// flag := true
 	for start := time.Now().Unix(); start+int64(loadParameter.RunningTime*60)-1 > time.Now().Unix(); {
-		// fmt.Println("time ", start, " ", (start + int64(loadParameter.RunningTime*60)), " ", start+int64(loadParameter.RunningTime*60) >= time.Now().Unix())
+
 		for i = 0; i < int32(loadParameter.TotalGateway); i++ {
-			sql := fmt.Sprintf("select id, name,template,thing_key,extract(epoch from last_activity) as last_activity,site_id,user_defined_property,templates_id from things order by id limit %v offset %v", loadParameter.MeterparGateway, results[i].Offset)
-			thingies, err := lt.db.FetchThingies(ctx, int32(loadParameter.MeterparGateway), sql)
-			if err != nil {
-				fmt.Println(err.Error())
-				continue
-			}
+
 			// fmt.Println((results[i].StartActivity + loadParameter.Interval*60), " ", int(time.Now().Unix()), " ", (results[i].StartActivity+loadParameter.Interval*60 <= int(time.Now().Unix())))
-			if (results[i].StartActivity + loadParameter.Interval*60) <= int(time.Now().Unix()) {
+			if (results[i].StartActivity+loadParameter.Interval*60)+1 < int(time.Now().Unix()) {
+				sql := fmt.Sprintf("select id, name,template,thing_key,extract(epoch from last_activity) as last_activity,site_id,user_defined_property,templates_id from things order by id limit %v offset %v", loadParameter.MeterparGateway, results[i].Offset)
+				thingies, err := lt.db.FetchThingies(ctx, int32(loadParameter.MeterparGateway), sql)
+				fmt.Println(len(thingies), "load")
+
+				if err != nil {
+					fmt.Println(err.Error())
+					continue
+				}
 				results[i].StartActivity = int(time.Now().Unix())
 				counter++
-				go lt.worker(ctx, i, thingies, client, reCh)
+				job <- JobPush{Gateway: int(i), thingKeys: thingies}
 			}
 
 		}
 
-		// time.Sleep(time.Second * time.Duration(interva
-
 	}
+	close(job)
 	fmt.Println(counter, " counter")
-	for i = 0; i < int32(counter); i++ {
-		result := <-reCh
-		fmt.Println("result in channel loop: ", result)
-		results[result.Gateway].SetInterval(Interval{
-			Start:        result.Start,
-			LastActivity: result.LastActivity,
-			Total:        result.Total,
-			Success:      result.Success,
-			Fail:         result.Fail,
-		})
-		results[result.Gateway].IncrementTotalCycle()
-		// results[result.Gateway].SetLastActivity(result.Start)
+
+	f, err := os.Create("./result.txt")
+	if err != nil {
+		fmt.Println("error creating file", err)
 	}
+	defer f.Close()
+	rejson, err := json.Marshal(results)
+	f.Write(rejson)
 	for _, res := range results {
 		fmt.Printf("final outer result: %+v \n", res)
 	}
+	// log.Fatal("end of results")
 
 }
 
-func (lt *loadTesting) worker(ctx context.Context, id int32, thingKeys model.Thingies, client mqtt.Client, result chan<- WorkerResult) {
-	res := lt.InitializeGoRoutine(ctx, client, thingKeys, id)
-	result <- res
+func (lt *loadTesting) worker(ctx context.Context, jobs <-chan JobPush, client mqtt.Client, results []*Result) {
+	for job := range jobs {
+		res := lt.InitializeGoRoutine(ctx, client, job.thingKeys, int32(job.Gateway))
+		results[res.Gateway].SetInterval(Interval{
+			Start:        res.Start,
+			LastActivity: res.LastActivity,
+			Total:        res.Total,
+			Success:      res.Success,
+			Fail:         res.Fail,
+		})
+		results[res.Gateway].IncrementTotalCycle()
+	}
 }
 
 // Log these entries to document one by one
@@ -151,7 +177,7 @@ func (lt *loadTesting) DocLogger(ctx context.Context, sendPayload string) {
 // Initialize This Goroutine
 func (lt *loadTesting) InitializeGoRoutine(ctx context.Context, client mqtt.Client, thingKeys model.Thingies, gid int32) (results WorkerResult) {
 	// log.Println("Gateway Started:", gid)
-	fmt.Println(len(thingKeys), "things *********** ", gid)
+	fmt.Println(len(thingKeys), "in func *********** ", gid)
 	result := WorkerResult{}
 	result.Total = len(thingKeys)
 	result.Gateway = gid
@@ -205,6 +231,7 @@ func (lt *loadTesting) CountTemplateThingKeysData(ctx context.Context) (int, err
 		fmt.Printf("unable to fetch data templateKey list", err.Error())
 		return -1, err
 	}
+	fmt.Println(templateList, "list")
 	count := 0
 	for _, templateKey := range templateList {
 		val, err := lt.db.FetchCountMeterReading(ctx, templateKey)
@@ -212,6 +239,7 @@ func (lt *loadTesting) CountTemplateThingKeysData(ctx context.Context) (int, err
 			fmt.Printf("error in fetching count data of template: %v\n", templateKey)
 			continue
 		}
+		// fmt.Println(count, " results ", templateKey)
 		count += val
 	}
 	return count, nil
@@ -237,4 +265,16 @@ func (lt *loadTesting) RemoveThingsData(ctx context.Context) (int, error) {
 
 func (lt *loadTesting) CreateThingKey(ctx context.Context, token string, count int) error {
 	return lt.RESTService.GenerateThingKeys(count, token)
+}
+
+var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+	fmt.Printf("Topic: %s | %s\n", msg.Topic(), msg.Payload())
+}
+
+var ConnectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
+	// fmt.Println("Connected")
+}
+
+var ConnectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, reason error) {
+	// log.Printf("CLIENT %v lost connection to the broker: %v. Will reconnect...\n", reason.Error())
 }

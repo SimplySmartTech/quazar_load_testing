@@ -53,12 +53,12 @@ func (service *RestService) GenerateThingKeys(count int, token string) error {
 			keys = count
 		}
 		payload := ThingKeyCreationPayload{
-			SiteId:      1,
+			SiteId:      152,
 			Name:        "load_testing_things",
 			Series:      true,
 			StartSeries: 1,
 			EndSeries:   keys,
-			TemplatesID: 1,
+			TemplatesID: 172,
 		}
 		payloadJson, err := json.Marshal(payload)
 
