@@ -57,7 +57,20 @@ func (db *databaseOps) TotalGateway(ctx context.Context, meterpergateway int32) 
 	}
 	return total_g
 }
-
+func (db *databaseOps) GetTemplateById(ctx context.Context, id int) ([]string, error) {
+	rows, err := db.db.QueryContext(ctx, fmt.Sprintf("SELECT template_key FROM templates where id = %d", id))
+	if err != nil {
+		fmt.Println("error during to fetching template key")
+		return nil, err
+	}
+	result := []string{}
+	for rows.Next() {
+		templateKey := ""
+		rows.Scan(&templateKey)
+		result = append(result, templateKey)
+	}
+	return result, nil
+}
 func (db *databaseOps) FetchCountMeterReading(ctx context.Context, table string) (int, error) {
 	query := fmt.Sprintf("select count(*) from %v", table)
 	row, err := db.db.QueryContext(ctx, query)

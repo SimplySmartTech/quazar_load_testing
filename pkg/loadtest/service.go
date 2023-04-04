@@ -139,9 +139,11 @@ func (lt *loadTesting) InitializeGateways(ctx context.Context, loadParameter mod
 		}
 
 	}
-	time.Sleep(time.Duration(loadParameter.Interval * 60 * int(time.Second)))
+	// time.Sleep(time.Duration(loadParameter.Interval * 60 * int(time.Second)))
 	close(job)
 	close(finish)
+	f.WriteString("================================================================\n")
+	f.WriteString("================================================================\n")
 	fmt.Println(counter, " counter")
 
 	// log.Fatal("end of results")
@@ -152,10 +154,12 @@ func (lt *loadTesting) worker(ctx context.Context, jobs <-chan JobPush, finish c
 	for job := range jobs {
 		res := lt.InitializeGoRoutine(ctx, client, job.thingKeys, int32(job.Gateway))
 		results[res.Gateway].SetInterval(Interval{
-			TimeTaken: res.LastActivity - res.Start,
-			Total:     res.Total,
-			Success:   res.Success,
-			Fail:      res.Fail,
+			Start:        res.Start,
+			LastActivity: res.LastActivity,
+			TimeTaken:    res.LastActivity - res.Start,
+			Total:        res.Total,
+			Success:      res.Success,
+			Fail:         res.Fail,
 		})
 
 		results[res.Gateway].IncrementTotalCycle()
@@ -188,39 +192,34 @@ func (lt *loadTesting) WriteResult(ctx context.Context, finish <-chan int, resul
 				f.WriteString("\n")
 				fmt.Printf("final result after %d cycle: %+v \n", res.Cycle, res)
 			}
-			runningTime := results[0].Cycle * loadParameter.Interval
-			// endtime := int(time.Now().Unix())
-			// ticker := time.NewTicker(5 * time.Second) // create a ticker that ticks every 5 seconds
-			// ticker := time.NewTicker(5 * time.Second)
-
-			// Create a done channel to signal when the ticker should stop
-
-			for start+int64(runningTime*60)-1 > time.Now().Unix() {
-				// 	select {
-				// 	case <-ticker.C:
-				// 		go func(f *os.File) {
-				// 			count, err := lt.CountTemplateThingKeysData(ctx)
-				// 			_, _ = count, err
-				// 			fmt.Println(time.Now())
-				// 			// if err != nil {
-				// 			// 	log.Printf("error in fetching things data: %v", err.Error())
-				// 			// }
-				// 			// f.WriteString(fmt.Sprintf("time : %v - Count : %d\n", time.Now(), count))
-				// 		}(f)
-				// 		// case <-done:
-				// 		// 	ticker.Stop()
-				// 		// 	return
-
-				// 	}
-				// }
-			}
-			// fmt.Println(time.Unix(start+int64(runningTime*60), 0))
 			count, err := lt.CountTemplateThingKeysData(ctx)
 			// fmt.Println(time.Now())
 			if err != nil {
 				log.Printf("error in fetching things data: %v", err.Error())
 			}
-			f.WriteString(fmt.Sprintf("time : %v - Count : %d\n", time.Now(), count))
+			f.WriteString(fmt.Sprintf("time : %v - Count : %d\n", time.Now().Unix(), count))
+			runningTime := results[0].Cycle * loadParameter.Interval
+			// endtime := int(time.Now().Unix())
+			ticker := time.NewTicker(5 * time.Second) // create a ticker that ticks every 5 seconds
+			// ticker := time.NewTicker(5 * time.Second)
+
+			// Create a done channel to signal when the ticker should stop
+
+			for start+int64(runningTime*60)-1 > time.Now().Unix() {
+				select {
+				case <-ticker.C:
+					count, err := lt.CountTemplateThingKeysData(ctx)
+					_, _ = count, err
+					fmt.Println(time.Now())
+					if err != nil {
+						log.Printf("error in fetching things data: %v", err.Error())
+					}
+					f.WriteString(fmt.Sprintf("time : %v - Count : %d\n", time.Now().Unix(), count))
+
+				}
+
+			}
+			// fmt.Println(time.Unix(start+int64(runningTime*60), 0))
 
 		}
 
@@ -298,24 +297,43 @@ func (lt *loadTesting) InitializeGoRoutine(ctx context.Context, client mqtt.Clie
 }
 
 func (lt *loadTesting) CountTemplateThingKeysData(ctx context.Context) (int, error) {
-	templateList, err := lt.db.FetchTemplateKey(ctx)
+	// templateList, err := lt.db.FetchTemplateKey(ctx)
+	// if err != nil {
+	// 	fmt.Printf("unable to fetch data templateKey list", err.Error())
+	// 	return -1, err
+	// }
+	// fmt.Println(templateList, "list")
+	// count := 0
+	// time := 0
+	// for _, templateKey := range templateList[:48] {
+	// 	val, err := lt.db.FetchCountMeterReading(ctx, templateKey)
+	// 	time++
+	// 	fmt.Println(templateKey, val, time)
+	// 	if err != nil {
+	// 		fmt.Printf("error in fetching count data of template: %v\n", templateKey)
+	// 		continue
+	// 	}
+	// 	// fmt.Println(count, " results ", templateKey)
+	// 	count += val
+	// }
+	time := 0
+	count := 0
+	templateList, err := lt.db.GetTemplateById(ctx, 172)
 	if err != nil {
 		fmt.Printf("unable to fetch data templateKey list", err.Error())
 		return -1, err
 	}
-	fmt.Println(templateList, "list")
-	count := 0
-	time := 0
-	for _, templateKey := range templateList[:48] {
-		val, err := lt.db.FetchCountMeterReading(ctx, templateKey)
+	for _, template := range templateList {
+		val, err := lt.db.FetchCountMeterReading(ctx, template)
 		time++
-		fmt.Println(templateKey, val, time)
+		fmt.Println(template, val, time)
 		if err != nil {
-			fmt.Printf("error in fetching count data of template: %v\n", templateKey)
-			continue
+			fmt.Printf("error in fetching count data of template: %v\n", template)
+			return 0, nil
 		}
+		count = val
 		// fmt.Println(count, " results ", templateKey)
-		count += val
+
 	}
 	return count, nil
 }

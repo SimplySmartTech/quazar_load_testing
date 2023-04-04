@@ -18,6 +18,7 @@ type DatabaseOps interface {
 	TotalGateway(ctx context.Context, meterpergateway int32) (total int32)
 	FetchCountMeterReading(ctx context.Context, tabel string) (int, error)
 	FetchTemplateKey(ctx context.Context) ([]string, error)
+	GetTemplateById(ctx context.Context, id int) ([]string, error)
 	RemoveTemplateThingData(ctx context.Context, templateKey string) (int, error)
 }
 
