@@ -26,7 +26,7 @@ func InitializeLoadTest(lt LoadTesting, client paho_mqtt.Client) http.HandlerFun
 		if err != nil {
 			log.Fatal(err)
 		}
-
+		lt.RemoveThingsData(r.Context())
 		// Generate payload and send : thingsies
 		lt.GeneratePayload(r.Context(), loadParameter, client)
 	}

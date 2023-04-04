@@ -22,7 +22,8 @@ type LoadTesting interface {
 	GeneratePayload(ctx context.Context, loadParameter model.InitializeLoadTestRequest, client mqtt.Client)
 	DocLogger(ctx context.Context, sendPayload string)
 	InitializeGoRoutine(ctx context.Context, client mqtt.Client, thingKeys model.Thingies, gid int32) (results WorkerResult)
-	worker(ctx context.Context, jobs <-chan JobPush, client mqtt.Client, results []*Result)
+	worker(ctx context.Context, jobs <-chan JobPush, finish chan int, client mqtt.Client, results []*Result)
+	WriteResult(ctx context.Context, finish <-chan int, results []*Result, f *os.File, totalGateway int, loadParameter model.InitializeLoadTestRequest, start int64)
 	CountTemplateThingKeysData(ctx context.Context) (int, error)
 	RemoveThingsData(ctx context.Context) (int, error)
 	CreateThingKey(ctx context.Context, token string, count int) error
@@ -67,10 +68,12 @@ func (lt *loadTesting) InitializeGateways(ctx context.Context, loadParameter mod
 	fmt.Println(loadParameter.TotalGateway, "***********gatway")
 	job := make(chan JobPush, loadParameter.TotalGateway)
 
-	results := make([]*Result, loadParameter.TotalGateway+1)
+	results := make([]*Result, loadParameter.TotalGateway)
+	finish := make(chan int, loadParameter.TotalGateway)
+
 	// temp_eZc3fHCCEg
 	// temp_2xColxZtG1
-	for j := 0; j <= loadParameter.TotalGateway; j++ {
+	for j := 0; j < loadParameter.TotalGateway; j++ {
 		results[j] = &Result{
 			Gateway: int32(j),
 			Limit:   loadParameter.MeterparGateway,
@@ -78,9 +81,15 @@ func (lt *loadTesting) InitializeGateways(ctx context.Context, loadParameter mod
 		}
 
 	}
-	var broker = "52.66.50.56"
+	var broker = os.Getenv("BROKER")
+	// var broker = "localhost"
 	var port = 1883
 	clientObj := []mqtt.Client{}
+	f, err := os.OpenFile("./result.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Println("error creating file", err)
+	}
+	defer f.Close()
 	for j := 0; j < loadParameter.TotalGateway; j++ {
 		opts := mqtt.NewClientOptions()
 		opts.AddBroker(fmt.Sprintf("tcp://%s:%d", broker, port))
@@ -97,13 +106,17 @@ func (lt *loadTesting) InitializeGateways(ctx context.Context, loadParameter mod
 		if token.Wait() && token.Error() != nil {
 			panic(token.Error())
 		}
-		go lt.worker(ctx, job, client1, results)
+		go lt.worker(ctx, job, finish, client1, results)
 	}
 
-	fmt.Printf("%+v", results)
+	fmt.Printf("cycle  %+v\n", results)
 	counter := 0
+	// times := 0
 	// flag := true
-	for start := time.Now().Unix(); start+int64(loadParameter.RunningTime*60)-1 > time.Now().Unix(); {
+	runningTime := loadParameter.NumOfCycles * loadParameter.Interval
+	start := time.Now().Unix()
+	go lt.WriteResult(ctx, finish, results, f, loadParameter.TotalGateway, loadParameter, start)
+	for start = start; start+int64(runningTime*60)-1 > time.Now().Unix(); {
 
 		for i = 0; i < int32(loadParameter.TotalGateway); i++ {
 
@@ -120,40 +133,99 @@ func (lt *loadTesting) InitializeGateways(ctx context.Context, loadParameter mod
 				results[i].StartActivity = int(time.Now().Unix())
 				counter++
 				job <- JobPush{Gateway: int(i), thingKeys: thingies}
+
 			}
 
 		}
 
 	}
+	time.Sleep(time.Duration(loadParameter.Interval * 60 * int(time.Second)))
 	close(job)
+	close(finish)
 	fmt.Println(counter, " counter")
 
-	f, err := os.Create("./result.txt")
-	if err != nil {
-		fmt.Println("error creating file", err)
-	}
-	defer f.Close()
-	rejson, err := json.Marshal(results)
-	f.Write(rejson)
-	for _, res := range results {
-		fmt.Printf("final outer result: %+v \n", res)
-	}
 	// log.Fatal("end of results")
 
 }
 
-func (lt *loadTesting) worker(ctx context.Context, jobs <-chan JobPush, client mqtt.Client, results []*Result) {
+func (lt *loadTesting) worker(ctx context.Context, jobs <-chan JobPush, finish chan int, client mqtt.Client, results []*Result) {
 	for job := range jobs {
 		res := lt.InitializeGoRoutine(ctx, client, job.thingKeys, int32(job.Gateway))
 		results[res.Gateway].SetInterval(Interval{
-			Start:        res.Start,
-			LastActivity: res.LastActivity,
-			Total:        res.Total,
-			Success:      res.Success,
-			Fail:         res.Fail,
+			TimeTaken: res.LastActivity - res.Start,
+			Total:     res.Total,
+			Success:   res.Success,
+			Fail:      res.Fail,
 		})
+
 		results[res.Gateway].IncrementTotalCycle()
+		finish <- 1
+
 	}
+}
+
+func (lt *loadTesting) WriteResult(ctx context.Context, finish <-chan int, results []*Result, f *os.File, totalGateway int, loadParameter model.InitializeLoadTestRequest, start int64) {
+	times := 0
+	// done := make(chan bool)
+	for _ = range finish {
+
+		times++
+		if times == totalGateway {
+			// rejson, err := json.Marshal(results)
+			// if err != nil {
+			// 	fmt.Println(err.Error())
+			// }
+			// f.Write(rejson)
+			f.WriteString(fmt.Sprintf("==================== Cycle: %d ====================\n", results[0].Cycle))
+			fmt.Printf("times: %d\n", times)
+			times = 0
+			for _, res := range results {
+				rejson, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err.Error())
+				}
+				f.Write(rejson)
+				f.WriteString("\n")
+				fmt.Printf("final result after %d cycle: %+v \n", res.Cycle, res)
+			}
+			runningTime := results[0].Cycle * loadParameter.Interval
+			// endtime := int(time.Now().Unix())
+			// ticker := time.NewTicker(5 * time.Second) // create a ticker that ticks every 5 seconds
+			// ticker := time.NewTicker(5 * time.Second)
+
+			// Create a done channel to signal when the ticker should stop
+
+			for start+int64(runningTime*60)-1 > time.Now().Unix() {
+				// 	select {
+				// 	case <-ticker.C:
+				// 		go func(f *os.File) {
+				// 			count, err := lt.CountTemplateThingKeysData(ctx)
+				// 			_, _ = count, err
+				// 			fmt.Println(time.Now())
+				// 			// if err != nil {
+				// 			// 	log.Printf("error in fetching things data: %v", err.Error())
+				// 			// }
+				// 			// f.WriteString(fmt.Sprintf("time : %v - Count : %d\n", time.Now(), count))
+				// 		}(f)
+				// 		// case <-done:
+				// 		// 	ticker.Stop()
+				// 		// 	return
+
+				// 	}
+				// }
+			}
+			// fmt.Println(time.Unix(start+int64(runningTime*60), 0))
+			count, err := lt.CountTemplateThingKeysData(ctx)
+			// fmt.Println(time.Now())
+			if err != nil {
+				log.Printf("error in fetching things data: %v", err.Error())
+			}
+			f.WriteString(fmt.Sprintf("time : %v - Count : %d\n", time.Now(), count))
+
+		}
+
+	}
+	// close(done)
 }
 
 // Log these entries to document one by one
@@ -233,8 +305,11 @@ func (lt *loadTesting) CountTemplateThingKeysData(ctx context.Context) (int, err
 	}
 	fmt.Println(templateList, "list")
 	count := 0
-	for _, templateKey := range templateList {
+	time := 0
+	for _, templateKey := range templateList[:48] {
 		val, err := lt.db.FetchCountMeterReading(ctx, templateKey)
+		time++
+		fmt.Println(templateKey, val, time)
 		if err != nil {
 			fmt.Printf("error in fetching count data of template: %v\n", templateKey)
 			continue

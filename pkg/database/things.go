@@ -62,9 +62,10 @@ func (db *databaseOps) FetchCountMeterReading(ctx context.Context, table string)
 	query := fmt.Sprintf("select count(*) from %v", table)
 	row, err := db.db.QueryContext(ctx, query)
 	if err != nil {
-		log.Println("things.go-TotalGateway", row.Err().Error())
+		log.Println("things.go-TotalGateway", err)
 		return 0, err
 	}
+	// fmt.Print("working\n")
 	count := -1
 	row.Next()
 	err = row.Scan(&count)

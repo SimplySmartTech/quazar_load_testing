@@ -5,7 +5,7 @@ import "simply_smart_mqtt_load_testing/pkg/model"
 type Result struct {
 	Gateway       int32      `json:"gateway"`
 	Interval      []Interval `json:"interval"`
-	TotalCycle    int        `json:"cycle`
+	Cycle         int        `json:"cycle"`
 	Limit         int        `json:"limit"`
 	Offset        int        `json:"offset"`
 	StartActivity int        `json:"start_activity"`
@@ -22,10 +22,11 @@ func (re *Result) SetGateway(gateway int32) {
 	re.Gateway = gateway
 }
 func (re *Result) SetInterval(interval Interval) {
+	re.Interval = []Interval{}
 	re.Interval = append(re.Interval, interval)
 }
 func (re *Result) IncrementTotalCycle() {
-	re.TotalCycle++
+	re.Cycle++
 }
 func (re *Result) SetLastActivity(lastActivity int) {
 	re.StartActivity = lastActivity
@@ -48,8 +49,9 @@ type Details struct {
 }
 
 type Interval struct {
-	Start        int `json:"start"`
-	LastActivity int `json:"last_activity"`
+	Start        int `json:"start,omitempty"`
+	LastActivity int `json:"last_activity,omitempty"`
+	TimeTaken    int `json:"time_taken"`
 	Total        int `json:"total"`
 	Fail         int `json:"fail"`
 	Success      int `json:"success"`

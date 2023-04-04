@@ -19,7 +19,7 @@ type InitializeLoadTestRequest struct {
 	MeterparGateway int `json:"meterper_gateway"`
 	TotalGateway    int `josn:"gateway"`
 	Interval        int `json:"interval"`
-	RunningTime     int `json:"runing_time"`
+	NumOfCycles     int `json:"num_cycles"`
 }
 
 // Payload to send to the server
