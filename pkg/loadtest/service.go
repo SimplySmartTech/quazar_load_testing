@@ -175,11 +175,6 @@ func (lt *loadTesting) WriteResult(ctx context.Context, finish <-chan int, resul
 
 		times++
 		if times == totalGateway {
-			// rejson, err := json.Marshal(results)
-			// if err != nil {
-			// 	fmt.Println(err.Error())
-			// }
-			// f.Write(rejson)
 			f.WriteString(fmt.Sprintf("==================== Cycle: %d ====================\n", results[0].Cycle))
 			fmt.Printf("times: %d\n", times)
 			times = 0
@@ -201,9 +196,6 @@ func (lt *loadTesting) WriteResult(ctx context.Context, finish <-chan int, resul
 			runningTime := results[0].Cycle * loadParameter.Interval
 			// endtime := int(time.Now().Unix())
 			ticker := time.NewTicker(5 * time.Second) // create a ticker that ticks every 5 seconds
-			// ticker := time.NewTicker(5 * time.Second)
-
-			// Create a done channel to signal when the ticker should stop
 
 			for start+int64(runningTime*60)-1 > time.Now().Unix() {
 				select {
@@ -219,12 +211,10 @@ func (lt *loadTesting) WriteResult(ctx context.Context, finish <-chan int, resul
 				}
 
 			}
-			// fmt.Println(time.Unix(start+int64(runningTime*60), 0))
-
 		}
 
 	}
-	// close(done)
+
 }
 
 // Log these entries to document one by one
@@ -297,25 +287,7 @@ func (lt *loadTesting) InitializeGoRoutine(ctx context.Context, client mqtt.Clie
 }
 
 func (lt *loadTesting) CountTemplateThingKeysData(ctx context.Context) (int, error) {
-	// templateList, err := lt.db.FetchTemplateKey(ctx)
-	// if err != nil {
-	// 	fmt.Printf("unable to fetch data templateKey list", err.Error())
-	// 	return -1, err
-	// }
-	// fmt.Println(templateList, "list")
-	// count := 0
-	// time := 0
-	// for _, templateKey := range templateList[:48] {
-	// 	val, err := lt.db.FetchCountMeterReading(ctx, templateKey)
-	// 	time++
-	// 	fmt.Println(templateKey, val, time)
-	// 	if err != nil {
-	// 		fmt.Printf("error in fetching count data of template: %v\n", templateKey)
-	// 		continue
-	// 	}
-	// 	// fmt.Println(count, " results ", templateKey)
-	// 	count += val
-	// }
+
 	time := 0
 	count := 0
 	templateList, err := lt.db.GetTemplateById(ctx, 172)
