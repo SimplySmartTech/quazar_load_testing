@@ -175,7 +175,7 @@ func (lt *loadTesting) WriteResult(ctx context.Context, finish <-chan int, resul
 
 		times++
 		if times == totalGateway {
-			f.WriteString(fmt.Sprintf("==================== Cycle: %d ====================\n", results[0].Cycle))
+			f.WriteString(fmt.Sprintf("%v ==================== Cycle: %d ====================\n", time.Now().Format("2006-01-02"), results[0].Cycle))
 			fmt.Printf("times: %d\n", times)
 			times = 0
 			for _, res := range results {
@@ -200,14 +200,15 @@ func (lt *loadTesting) WriteResult(ctx context.Context, finish <-chan int, resul
 			for start+int64(runningTime*60)-1 > time.Now().Unix() {
 				select {
 				case <-ticker.C:
-					count, err := lt.CountTemplateThingKeysData(ctx)
-					_, _ = count, err
-					fmt.Println(time.Now())
-					if err != nil {
-						log.Printf("error in fetching things data: %v", err.Error())
+					if start+int64(runningTime*60)-1 > time.Now().Unix() {
+						count, err := lt.CountTemplateThingKeysData(ctx)
+						_, _ = count, err
+						// fmt.Println(time.Now())
+						if err != nil {
+							log.Printf("error in fetching things data: %v", err.Error())
+						}
+						f.WriteString(fmt.Sprintf("time : %v - Count : %d\n", time.Now().Unix(), count))
 					}
-					f.WriteString(fmt.Sprintf("time : %v - Count : %d\n", time.Now().Unix(), count))
-
 				}
 
 			}
